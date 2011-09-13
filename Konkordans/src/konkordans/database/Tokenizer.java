@@ -42,6 +42,15 @@ public class Tokenizer {
 		return retValue;
 	}
 	
+	/**
+	 * Proccesses the read data and inserts found words in the tree together with the filepointers
+	 * 
+	 * @param wordsAndIndex The tree to insert word and filepointers to
+	 * @param words The read data
+	 * @param length Length of read data, could be shorter than the array words
+	 * @param filePointer A filepointer in the file that marks where the array of read data started
+	 * @return A filepointer that indicates how many of the bytes that has been processed. Not all data is proccessed if the last sequence of characterts can't be determined to be a word. The returned filepointer indicates where in the file you are and should be set as the readers new filepointer unless you want to risk missing words.
+	 */
 	private static long insertToTree(TreeMap<String, ArrayList<Long>> wordsAndIndex,byte[] words, int length, long filePointer) {
 		
 		StringBuilder word = new StringBuilder();
@@ -80,37 +89,6 @@ public class Tokenizer {
 				
 				filePointer++;
 			}
-//			if(!(words[i]>='a'&&words[i]<='z')&&!(words[i]>='A'&&words[i]<='Z')&&
-//					!(words[i]>=-32&&words[i]<=-17)&&!(words[i]>=-15&&words[i]<=-10)&&!(words[i]>=-8&&words[i]<=-3)&&!(words[i]==-1)&&
-//					!(words[i]>=-64&&words[i]<=-49)&&!(words[i]>=-47&&words[i]<=-42)&&!(words[i]>=-40&&words[i]<=-35)){
-//				
-//				String mapWord = word.toString();
-//				
-//				if(mapWord.length()>0){
-//					
-//				mapWord = mapWord.toLowerCase();
-//					
-//				if(!wordsAndIndex.containsKey(mapWord)){
-//					wordsAndIndex.put(mapWord, new ArrayList<Long>(2));
-//				}
-//				wordsAndIndex.get(mapWord).add(filePointer);
-//				wordOffset = (short)word.length();
-//				filePointer = filePointer + wordOffset;
-//				word.delete(0,wordOffset);
-//				}
-//				
-//				filePointer++;
-//				
-//			} else{
-//				
-//				if(words[i]<0){
-//					cha = proccessSpecialChar(words[i]);
-//				} else{
-//					cha = (char)words[i];
-//				}
-//				
-//				word.append(cha);
-//			}
 		}
 		
 		return filePointer;
