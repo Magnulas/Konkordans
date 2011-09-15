@@ -3,14 +3,16 @@ package konkordans.search;
 //run from console: java -cp bin konkordans.search.Konkordans FILE WORD
 
 import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
+import java.io.InputStreamReader;
 import java.io.RandomAccessFile;
 
 import konkordans.StringData;
+import konkordans.database.DatabaseBuilder;
 import konkordans.database.HashFileWriter;
 import util.StringParser;
 import util.Timer;
@@ -24,11 +26,23 @@ public class Konkordans {
 	private static final String SYS_SEARCH_START = "Searching ";
 	private static final String SYS_SEARCH_MIDDLE = " for the word ";
 	private static final String SYS_SEARCH_END = ".";
+	private static final String SYS_SEARCH_TIMER_START = "It took ";
+	private static final String SYS_SEARCH_TIMER_END = " milliseconds to search";
 			
 	private static final String ERR_ARG_COUNT = "You need to pass a path to the file you wish to search and a word to search for. Ex. 'myfile word'";
+	private static final String ERR_INDEX_FILE_START = "Could not find index file for given file ";
+	private static final String ERR_INDEX_FILE_END = ". Would you like to build the index file? (y/n)";
 	
 	private static final int DISPLAYSIZE = 40;
-	
+
+	/**
+	 * The only public visible function. Takes two arguments, a path to a file 
+	 * and a word to search for in this file. This requires that you have built
+	 * an index of the file you're searching with help of DatabaseBuilder.
+	 * 
+	 * @param args First argument is the file to search, second argument is sword to search for.
+	 * @throws IOException 
+	 */
 	public static void main(String args[]) throws IOException{
 		
 		if(args.length!=2){
@@ -47,12 +61,15 @@ public class Konkordans {
 		System.out.println(SYS_SEARCH_START + filePath + SYS_SEARCH_MIDDLE + searchWord + SYS_SEARCH_END);
 		
 		String hashFilePath = StringData.VAR_DATA_PATH + fileName + StringData.VAR_HASH_SUFFIX;
+		File indexFile = new File(StringData.VAR_DATA_PATH + fileName + StringData.VAR_INDEX_SUFFIX);
+		
+		timer.stop();
+		validateFile(filePath,indexFile);
+		timer.cont();
 		
 		int ind = HashFileWriter.hash(searchWord);
 		long filePointerStart = HashFileWriter.getFromFile(hashFilePath,ind);
 		long filePointerEnd;
-		
-		File indexFile = new File(StringData.VAR_DATA_PATH + fileName + StringData.VAR_INDEX_SUFFIX);
 		
 		ind = ind+1;
 		
@@ -70,10 +87,28 @@ public class Konkordans {
 		print(searchWord, foundStrings);
 		timer.cont();
 		
-		System.out.println("It took " + timer.getElapsedTime() + " milliseconds to search");
+		System.out.println(SYS_SEARCH_TIMER_START + timer.getElapsedTime() + SYS_SEARCH_TIMER_END);
 	}
 
-	private static void print(String searchWord, String[] foundStrings) throws IOException {
+	private static void validateFile(String filePath,File indexFile) throws IOException {
+		if(!indexFile.exists()){
+			System.out.print(ERR_INDEX_FILE_START + filePath + ERR_INDEX_FILE_END);
+			
+			BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+			
+			String line = br.readLine();
+			
+			if(line.charAt(0) == 'y'){
+				String[] args = new String[1];
+				args[0] = filePath;
+				DatabaseBuilder.main(args);
+			} else{
+				System.exit(0);
+			}
+		}
+	}
+
+	private static void print(String searchWord, String[] foundStrings) throws IOException{
 		
 		if(foundStrings==null){
 			System.out.println(SYS_MULTIPLE_OCCURENCES_START + 0 + SYS_MULTIPLE_OCCURENCES_MIDDLE + searchWord + ".");
@@ -85,32 +120,22 @@ public class Konkordans {
 		
 		if(length>25){
 			System.out.println(SYS_MULTIPLE_OCCURENCES_START + length + SYS_MULTIPLE_OCCURENCES_MIDDLE + searchWord + SYS_MULTIPLE_OCCURENCES_END);
-			int byteRead = System.in.read();
-			if(byteRead!='y'){
+			
+			BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+			String line = br.readLine();
+			
+			if(line.charAt(0)!='y'){
 				print = false;
 			}
 		}
 		
 		if(print){
 			for(int i = 0;i<foundStrings.length;i++){
-				
-				System.out.println(replaceChar((i+1) + ". " + foundStrings[i],'\n',' '));
+				System.out.println((i+1) + ". " + foundStrings[i].replace('\n',' '));
 			}
 		}
 	}
 	
-	private static String replaceChar(String elem, char replace, char replaceWith) {
-		
-		byte[] chars = elem.getBytes();
-		for(int i = 0;i<chars.length;i++){
-			if(chars[i]==(byte)replace){
-				chars[i] = (byte)replaceWith;
-			}
-		}
-		
-		return new String(chars);
-	}
-
 	private static String[] searchFile(String filePath, long[] filePointers) throws IOException {
 		
 		if(filePointers==null){
@@ -154,63 +179,85 @@ public class Konkordans {
 		return foundData;
 	}
 
-	/**
-	 * 
-	 * @param filePointerStart
-	 * @param filePointerEnd
-	 * @param searchWord
-	 * @return Return a list of file pointers to the indexed file
-	 * @throws IOException 
-	 */
 	private static long[] searchIndexFile(long filePointerStart, long filePointerEnd, String searchWord, File file) throws IOException {
 		
 		int length = searchWord.length();
-		long[] returnValue = null;
 		
-		String subString;
+		String matchTo;
 		
 		if(length>3){
-
-			subString = searchWord.substring(3,length);
+			matchTo = searchWord.substring(3,length);
 		} else {
-			subString = "";
+			matchTo = "";
 		}
-				
-		returnValue = binarySearchIndex(filePointerStart,filePointerEnd,subString,file);
-		
-		return returnValue;
-		
-	}
-
-	private static long[] binarySearchIndex(long filePointerStart, long filePointerEnd, String matchTo, File file) throws IOException {
 		
 		RandomAccessFile reader = new RandomAccessFile(file,"r");
-		long[] returnValue = null;
+
+		filePointerStart = searchIndexFileHelperBinary(filePointerStart,filePointerEnd,reader,matchTo);
+		
+		String[] wordLongIntArray = searchIndexFileHelperRowByRow(filePointerStart,filePointerEnd,reader,matchTo);
+		reader.close();
+		
+		if(wordLongIntArray == null){
+			return null;
+		} else{
+			return readFilePointers(Long.valueOf(wordLongIntArray[1]),Integer.valueOf(wordLongIntArray[2]), file);
+		}
+	}
+
+	private static String[] searchIndexFileHelperRowByRow(long filePointerStart, long filePointerEnd, RandomAccessFile reader, String matchTo) throws IOException {
+		
+		reader.seek(filePointerStart);
+		
+		String wordLongInt;
+		String[] wordLongIntArray;
+		
+		//Row-by-row search
+		while(true){
+			wordLongInt = reader.readLine();
+			
+			if(wordLongInt == null){
+				reader.close();
+				return null;
+			}
+			wordLongIntArray = wordLongInt.split(" "); //A array of length 3 with a word, a long and a int
+			
+			if(wordLongIntArray[0].equals(matchTo)){
+				return wordLongIntArray;
+			}
+			if(reader.getFilePointer()>=filePointerEnd){
+				//no such word existed
+				return null;
+			}
+		}
+	}
+
+	private static long searchIndexFileHelperBinary(long filePointerStart, long filePointerEnd, RandomAccessFile reader, String matchTo) throws IOException {
+		
 		long middleFP;
 		char c;
 		String wordLongInt;
 		String[] wordLongIntArray;
 		int compareValue;
 		
-			
 		middleFP = (filePointerStart + filePointerEnd)/2;
 		reader.seek(middleFP);
 
-		//BINÄRSÖKNING
 		while(filePointerEnd-filePointerStart>1000){
 								
 			c = (char)reader.readByte();
 			
 			if(c=='\n'){
 					
+				middleFP = reader.getFilePointer(); //In case we found the word on the row we're reading we can return this file pointer
 				wordLongInt = reader.readLine();
 				wordLongIntArray = wordLongInt.split(" "); //A array of length 3 with a word, a long and a int
 				compareValue = matchTo.compareTo(wordLongIntArray[0]);
 					
 				if(compareValue==0){ //Found the word
-					returnValue = readFilePointers(Long.valueOf(wordLongIntArray[1]),Integer.valueOf(wordLongIntArray[2]), file);
-					reader.close();
-					return returnValue;
+//					returnValue = readFilePointers(Long.valueOf(wordLongIntArray[1]),Integer.valueOf(wordLongIntArray[2]), file);
+//					reader.close();
+					return middleFP; //Return to the start of the row since it has the word we were looking for
 				}
 					
 				if(compareValue<0){  //Word is in first half of interval
@@ -224,30 +271,15 @@ public class Konkordans {
 			}
 		}
 		
-		reader.seek(filePointerStart);
+		return filePointerStart;
 		
-		while(true){
-			wordLongInt = reader.readLine();
-			
-			if(wordLongInt == null){
-				return null;
-			}
-			wordLongIntArray = wordLongInt.split(" "); //A array of length 3 with a word, a long and a int
-			
-			if(wordLongIntArray[0].equals(matchTo)){
-				returnValue = readFilePointers(Long.valueOf(wordLongIntArray[1]),Integer.valueOf(wordLongIntArray[2]), file);
-				reader.close();
-				return returnValue;
-			}
-			if(reader.getFilePointer()>=filePointerEnd){
-				//no such word existed
-				reader.close();
-				return null;
-			}
-		}
 	}
 
 	private static long[] readFilePointers(long filePointer, int numberOfLongstoRead, File file) throws IOException {
+				
+		if(file == null){
+			return null;
+		}
 		
 		long[] returnValue = new long[numberOfLongstoRead];
 		
@@ -262,37 +294,4 @@ public class Konkordans {
 		return returnValue;
 		
 	}
-
-	public static HashFileWriter readHashFile(String  filePath){
-		FileInputStream fis = null;
-		ObjectInputStream in = null;
-		try{
-			fis = new FileInputStream(filePath);
-			in = new ObjectInputStream(fis);
-			return (HashFileWriter)in.readObject();
-		}catch(IOException ex){
-			ex.printStackTrace();
-		}catch(ClassNotFoundException e){
-			e.printStackTrace();
-		} finally{
-			if(fis!=null){
-				try {
-					fis.close();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
-			if(in!=null){
-				try {
-					in.close();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
-		}
-		return null;
-	}
-
 }
